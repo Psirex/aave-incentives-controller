@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity 0.8.9;
 
-import { IERC20 } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/token/ERC20/IERC20.sol";
-import { SafeERC20 } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/token/ERC20/utils/SafeERC20.sol";
-import { AccessControl } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/access/AccessControl.sol";
+// import { IERC20 } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/token/ERC20/IERC20.sol";
+// import { SafeERC20 } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/token/ERC20/utils/SafeERC20.sol";
+// import { AccessControl } from "OpenZeppelin/openzeppelin-contracts@4.3.2/contracts/access/AccessControl.sol";
 
 struct Reward {
   uint256 upcomingReward;
@@ -100,10 +100,14 @@ interface IScaledBalanceToken {
   function getScaledUserBalanceAndSupply(address user) external view returns (uint256, uint256);
 }
 
+interface IERC20 {
+  function transferFrom(address sender, address recipient,uint256 amount) external returns (bool);
+  function transfer(address recipient, uint256 amount) external returns (bool);
+}
 
-contract IncentivesController is AccessControl {
+
+contract IncentivesController {
   using RewardsUtils for RewardsState;
-  using SafeERC20 for IERC20;
 
   bytes32 public constant EMISSION_MANAGER_ROLE = keccak256("INCENTIVES_CONTROLLER_EMISSION_MANAGER");
   bytes32 public constant ASSET_ROLE = keccak256("INCENTIVES_CONTROLLER_ASSET");
@@ -116,16 +120,10 @@ contract IncentivesController is AccessControl {
 
   constructor(address _rewardToken, address _emissionManager) {
     rewardToken = IERC20(_rewardToken);
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _setupRole(EMISSION_MANAGER_ROLE, _emissionManager);
   }
 
   function setStakingToken(address _stakingToken) external {
     address stakingTokenAddress = address(stakingToken);
-    if (hasRole(ASSET_ROLE, stakingTokenAddress)) {
-      revokeRole(ASSET_ROLE, stakingTokenAddress);
-    }
-    grantRole(ASSET_ROLE, _stakingToken);
     stakingToken = IScaledBalanceToken(_stakingToken);
   }
 
@@ -134,10 +132,10 @@ contract IncentivesController is AccessControl {
   }
 
   function startRewardPeriod(uint256 rewardAmount, address rewardHolder)
-    external onlyRole(EMISSION_MANAGER_ROLE)
+    external
   {
     require(rewardsState.endDate == 0 || rewardsState.endDate <= block.timestamp, 'REWARD_PERIOD_NOT_FINISHED');
-    rewardToken.safeTransferFrom(rewardHolder, address(this), rewardAmount);
+    rewardToken.transferFrom(rewardHolder, address(this), rewardAmount);
     uint256 endDate = block.timestamp + rewardsDuration;
     uint256 rewardPerSecond = rewardAmount / rewardsDuration;
     uint256 scaledTotalSupply = stakingToken.scaledTotalSupply();
@@ -153,11 +151,11 @@ contract IncentivesController is AccessControl {
       address user,
       uint256 totalSupply,
       uint256 userBalance
-  ) external onlyRole(ASSET_ROLE) {
+  ) external {
       rewardsState.updateReward(totalSupply, user, userBalance);
   }
 
-  function setRewardsDuration(uint256 newRewardsDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+  function setRewardsDuration(uint256 newRewardsDuration) external {
     rewardsDuration = newRewardsDuration;
   }
 
@@ -165,7 +163,7 @@ contract IncentivesController is AccessControl {
     (uint256 stakedByUser, uint256 totalStaked) = stakingToken.getScaledUserBalanceAndSupply(msg.sender);
     uint256 earnedRewards = rewardsState.payReward(totalStaked, msg.sender, stakedByUser);
     if (earnedRewards > 0) {
-      rewardToken.safeTransfer(msg.sender, earnedRewards);
+      rewardToken.transfer(msg.sender, earnedRewards);
     }
   }
 }
